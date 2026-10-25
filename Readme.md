@@ -34,7 +34,7 @@ lists and endless spinners. It does accept requests coming from Cloudflare Worke
 2. Recommended: in the worker's Settings -> Variables and Secrets add a secret named
    `PROXY_KEY` (any long random string) so only your server can use the relay.
 3. In Render -> Environment set `UPSTREAM_PROXY` to
-   `https://<name>.<account>.workers.dev/?url=` and, if you set a key,
+   `https://<name>.<account>.workers.dev` (a trailing `/?url=` is optional) and, if you set a key,
    `UPSTREAM_PROXY_KEY` to the same string. Render redeploys on save.
 4. Check the worker: this should print level data (`1:...`), not HTML or `error code`:
 

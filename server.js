@@ -34,8 +34,16 @@ const UPSTREAM_TIMEOUT_MS = 30000;
 // but lets Cloudflare Workers through. Set UPSTREAM_PROXY to a deployed worker.js, e.g.
 // https://gd-relay.you.workers.dev/?url=  and every proxied request is relayed through it.
 // UPSTREAM_PROXY_KEY is sent as X-Proxy-Key and must match the worker's PROXY_KEY secret.
-const UPSTREAM_PROXY = process.env.UPSTREAM_PROXY || '';
+const UPSTREAM_PROXY = relayBase(process.env.UPSTREAM_PROXY || '');
 const UPSTREAM_PROXY_KEY = process.env.UPSTREAM_PROXY_KEY || '';
+
+// Accepts https://x.workers.dev, https://x.workers.dev/ or https://x.workers.dev/?url= alike;
+// the worker reads the target from the "url" query parameter.
+function relayBase(value) {
+  value = value.trim();
+  if (!value) return '';
+  return value.includes('?') ? value : value.replace(/\/*$/, '/') + '?url=';
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -285,6 +293,6 @@ server.on('error', (e) => {
 server.listen(PORT, HOST, () => {
   console.log('Geometry Dash server running at http://' + (HOST === '0.0.0.0' ? 'localhost' : HOST) + ':' + PORT + '/');
   console.log('Proxy for online levels: ' + PROXY_PREFIX + '<url>   (Ctrl+C to stop)');
-  console.log(UPSTREAM_PROXY ? 'Relaying proxied requests through ' + UPSTREAM_PROXY.replace(/\?.*$/, '?...')
+  console.log(UPSTREAM_PROXY ? 'Relaying proxied requests through ' + UPSTREAM_PROXY + '<target>'
                              : 'Proxied requests go directly to the target hosts (no UPSTREAM_PROXY set).');
 });
