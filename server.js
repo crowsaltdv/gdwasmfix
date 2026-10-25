@@ -30,6 +30,13 @@ const MAX_BODY = 32 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const UPSTREAM_TIMEOUT_MS = 30000;
 
+// boomlings.com bans most hosting-provider IP ranges (Render answers "error code: 1005"),
+// but lets Cloudflare Workers through. Set UPSTREAM_PROXY to a deployed worker.js, e.g.
+// https://gd-relay.you.workers.dev/?url=  and every proxied request is relayed through it.
+// UPSTREAM_PROXY_KEY is sent as X-Proxy-Key and must match the worker's PROXY_KEY secret.
+const UPSTREAM_PROXY = process.env.UPSTREAM_PROXY || '';
+const UPSTREAM_PROXY_KEY = process.env.UPSTREAM_PROXY_KEY || '';
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -160,14 +167,21 @@ function readBody(req) {
   });
 }
 
-function upstream(url, method, headers, body, hop, onResponse, onError) {
-  // Node only calls `lookup` for hostnames, so IP literals are checked here.
+// Node only calls `lookup` for hostnames, so IP literals are checked separately.
+function isPrivateLiteral(url) {
   const literal = url.hostname.replace(/^\[|\]$/g, '');
-  if (net.isIP(literal) && isPrivateAddress(literal)) {
+  return net.isIP(literal) !== 0 && isPrivateAddress(literal);
+}
+
+// `guarded` keeps the connection away from private addresses; it is off only for the
+// operator-configured UPSTREAM_PROXY hop.
+function upstream(url, method, headers, body, hop, guarded, onResponse, onError) {
+  if (guarded && isPrivateLiteral(url)) {
     return onError(new Error('refusing to connect to a private address'));
   }
   const lib = url.protocol === 'https:' ? https : http;
-  const up = lib.request(url, { method, headers, lookup: publicLookup }, (ures) => {
+  const options = guarded ? { method, headers, lookup: publicLookup } : { method, headers };
+  const up = lib.request(url, options, (ures) => {
     const code = ures.statusCode;
     const loc = ures.headers.location;
     if (code >= 300 && code < 400 && loc && hop < MAX_REDIRECTS) {
@@ -179,7 +193,7 @@ function upstream(url, method, headers, body, hop, onResponse, onError) {
         delete nextHeaders['content-type'];
         delete nextHeaders['content-length'];
       }
-      return upstream(next, keep ? method : 'GET', nextHeaders, keep ? body : null, hop + 1, onResponse, onError);
+      return upstream(next, keep ? method : 'GET', nextHeaders, keep ? body : null, hop + 1, guarded, onResponse, onError);
     }
     onResponse(ures);
   });
@@ -210,7 +224,22 @@ async function handleProxy(req, res) {
   if (body) headers['content-length'] = body.length;
   if (req.headers.range) headers.range = req.headers.range;
 
-  const label = req.method + ' ' + target.hostname + target.pathname;
+  // With a relay configured the worker makes the real request, so the target is only
+  // screened here (its own private-address checks can't run on a connection we don't make).
+  let first = target;
+  let guarded = true;
+  if (UPSTREAM_PROXY) {
+    if (isPrivateLiteral(target)) return sendText(res, 502, 'Proxy error: refusing to connect to a private address');
+    try {
+      first = new URL(UPSTREAM_PROXY + encodeURIComponent(target.href));
+    } catch (e) {
+      return sendText(res, 500, 'UPSTREAM_PROXY is not a valid URL');
+    }
+    guarded = false;
+    if (UPSTREAM_PROXY_KEY) headers['x-proxy-key'] = UPSTREAM_PROXY_KEY;
+  }
+
+  const label = req.method + ' ' + target.hostname + target.pathname + (UPSTREAM_PROXY ? ' (relay)' : '');
   let replied = false;
   const fail = (err) => {
     console.log('[proxy] ' + label + ' failed: ' + err.message + ' (' + (Date.now() - started) + 'ms)');
@@ -219,7 +248,7 @@ async function handleProxy(req, res) {
     sendText(res, 502, 'Proxy error: ' + err.message);
   };
 
-  upstream(target, req.method, headers, body, 0, (ures) => {
+  upstream(first, req.method, headers, body, 0, guarded, (ures) => {
     replied = true;
     const out = { 'Cache-Control': 'no-store' };
     for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified']) {
@@ -256,4 +285,6 @@ server.on('error', (e) => {
 server.listen(PORT, HOST, () => {
   console.log('Geometry Dash server running at http://' + (HOST === '0.0.0.0' ? 'localhost' : HOST) + ':' + PORT + '/');
   console.log('Proxy for online levels: ' + PROXY_PREFIX + '<url>   (Ctrl+C to stop)');
+  console.log(UPSTREAM_PROXY ? 'Relaying proxied requests through ' + UPSTREAM_PROXY.replace(/\?.*$/, '?...')
+                             : 'Proxied requests go directly to the target hosts (no UPSTREAM_PROXY set).');
 });
