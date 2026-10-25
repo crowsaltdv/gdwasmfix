@@ -16,7 +16,13 @@ Open the printed address and click "load". The first load reads ~390 MB of
 the endpoint the game uses for everything online (level search/download, accounts,
 custom songs). It forwards those requests to boomlings.com and the song hosts
 without a User-Agent, which boomlings.com requires, and refuses private/loopback
-addresses. It listens on 127.0.0.1 only unless you set `HOST`.
+addresses. It listens on 127.0.0.1 only, unless `HOST` is set or a hosting
+platform provides `PORT` (then it listens on 0.0.0.0).
+
+## Hosting (Render)
+
+Web Service, Node runtime: Build Command `yarn`, Start Command `node server.js`
+(`package.json` has no dependencies, so `yarn` is a no-op). Render supplies `PORT`.
 
 `index.html` is `index.svg` with its embedded page decoded and pointed at the local
 server instead of the jsDelivr mirror and the third-party proxy; `index.svg` is

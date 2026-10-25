@@ -1,0 +1,12 @@
+{
+  "name": "geometry-dash-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local/hosted server for the Geometry Dash WASM build",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

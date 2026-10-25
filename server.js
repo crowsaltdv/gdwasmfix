@@ -22,7 +22,8 @@ const net = require('net');
 
 const ROOT = __dirname;
 const PORT = Number(process.argv[2] || process.env.PORT) || 8080;
-const HOST = process.env.HOST || '127.0.0.1';
+// Hosting platforms (Render, Railway, ...) set PORT and need the server reachable from outside.
+const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 
 const PROXY_PREFIX = '/__proxy?url=';
 const MAX_BODY = 32 * 1024 * 1024;
